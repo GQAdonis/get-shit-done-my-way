@@ -61,6 +61,7 @@ const hasGlobal = args.includes('--global') || args.includes('-g');
 const hasLocal = args.includes('--local') || args.includes('-l');
 const hasOpencode = args.includes('--opencode');
 const hasClaude = args.includes('--claude');
+const hasClawCode = args.includes('--claw-code') || args.includes('--clawcode');
 const hasGemini = args.includes('--gemini');
 const hasCodex = args.includes('--codex');
 const hasCopilot = args.includes('--copilot');
@@ -80,7 +81,7 @@ if (hasAll) {
   selectedRuntimes = ['claude', 'opencode'];
 } else {
   if (hasOpencode) selectedRuntimes.push('opencode');
-  if (hasClaude) selectedRuntimes.push('claude');
+  if (hasClaude || hasClawCode) selectedRuntimes.push('claude'); // --claw-code targets ~/.claude/settings.json
   if (hasGemini) selectedRuntimes.push('gemini');
   if (hasCodex) selectedRuntimes.push('codex');
   if (hasCopilot) selectedRuntimes.push('copilot');

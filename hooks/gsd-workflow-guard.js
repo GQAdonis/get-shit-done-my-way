@@ -76,14 +76,11 @@ process.stdin.on('end', () => {
     // If we get here: GSD project, guard enabled, file edit outside .planning/,
     // not in a subagent context. Inject advisory warning.
     const output = {
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        additionalContext: `⚠️ WORKFLOW ADVISORY: You're editing ${path.basename(filePath)} directly without a GSD command. ` +
-          'This edit will not be tracked in STATE.md or produce a SUMMARY.md. ' +
-          'Consider using /gsd:fast for trivial fixes or /gsd:quick for larger changes ' +
-          'to maintain project state tracking. ' +
-          'If this is intentional (e.g., user explicitly asked for a direct edit), proceed normally.'
-      }
+      systemMessage: `⚠️ WORKFLOW ADVISORY: You're editing ${path.basename(filePath)} directly without a GSD command. ` +
+        'This edit will not be tracked in STATE.md or produce a SUMMARY.md. ' +
+        'Consider using /gsd:fast for trivial fixes or /gsd:quick for larger changes ' +
+        'to maintain project state tracking. ' +
+        'If this is intentional (e.g., user explicitly asked for a direct edit), proceed normally.'
     };
 
     process.stdout.write(JSON.stringify(output));
