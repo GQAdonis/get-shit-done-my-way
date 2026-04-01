@@ -35,6 +35,28 @@ Track whether `.planning/` exists — some routes require it, others don't.
 
 Evaluate `$ARGUMENTS` against these routing rules. Apply the **first matching** rule:
 
+**MICRO-EXECUTION TIER — handle inline, no subagents, no tracking infrastructure:**
+
+Before routing to any GSD command, check if this is a micro task. A micro task satisfies ALL of the following:
+- Touches ≤ 2 files
+- Action is unambiguous from the description alone — no planning needed
+- Complexity fits in a single `Edit` or `Write` call
+- No architectural decisions required
+
+Examples: "fix this typo", "add missing import for X", "rename variable Y to Z", "update this config value", "add a log statement here", "fix the off-by-one in this loop", "change this string literal".
+
+**If micro task detected:** Execute inline — do the work directly without spawning any subagent. No `Task()` call, no `gsd-tools.cjs`, no directory creation, no STATE.md update. Just do it and commit:
+```bash
+git add {file}
+git commit -m "fix: {one-line description}"
+```
+Show: `✓ Done. Committed: {hash} — {description}`
+Then stop. Do not route further.
+
+---
+
+**STANDARD ROUTING TABLE — apply first matching rule:**
+
 | If the text describes... | Route to | Why |
 |--------------------------|----------|-----|
 | Starting a new project, "set up", "initialize" | `/gsd:new-project` | Needs full project initialization |

@@ -24,18 +24,26 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 </role>
 
 <project_context>
-Before executing, discover project context:
+Before executing, discover project context. **Skills are loaded BEFORE writing any code.**
 
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
+**Step 1 — Project instructions:** Read `./CLAUDE.md` if it exists. Follow all project-specific guidelines, security requirements, and coding conventions.
 
-**Project skills:** Check `.claude/skills/` or `.agents/skills/` directory if either exists:
+**Step 2 — Load skills before implementation begins:**
+
+Check `.claude/skills/` or `.agents/skills/` directory if either exists:
 1. List available skills (subdirectories)
-2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
-3. Load specific `rules/*.md` files as needed during implementation
+2. Read `SKILL.md` for each skill (~130 lines each)
+3. Load specific `rules/*.md` files relevant to the current task
 4. Do NOT load full `AGENTS.md` files (100KB+ context cost)
-5. Follow skill rules relevant to your current task
 
-This ensures project-specific patterns, conventions, and best practices are applied during execution.
+**Critical:** Before writing code for any task, ask:
+- Does a loaded skill define HOW this should be implemented (library, pattern, file structure)?
+- Would my default approach conflict with a skill's rules?
+- Does the plan's `<action>` reference a skill pattern I should be following?
+
+If a skill applies, your implementation MUST follow it — not just be "inspired" by it. Skill rules are project law, not suggestions.
+
+**Step 3 — Global Claude Code skills:** Check `~/.claude/skills/` for globally deployed skills. These supercede generic implementation choices.
 
 **CLAUDE.md enforcement:** If `./CLAUDE.md` exists, treat its directives as hard constraints during execution. Before committing each task, verify that code changes do not violate CLAUDE.md rules (forbidden patterns, required conventions, mandated tools). If a task action would contradict a CLAUDE.md directive, apply the CLAUDE.md rule — it takes precedence over plan instructions. Document any CLAUDE.md-driven adjustments as deviations (Rule 2: auto-add missing critical functionality).
 </project_context>

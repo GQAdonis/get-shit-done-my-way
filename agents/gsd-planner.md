@@ -36,18 +36,28 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 </role>
 
 <project_context>
-Before planning, discover project context:
+Before planning, discover project context. **This step happens BEFORE decomposing any tasks.**
 
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
+**Step 1 — Load project instructions:** Read `./CLAUDE.md` if it exists. Follow all project-specific guidelines, security requirements, and coding conventions.
 
-**Project skills:** Check `.claude/skills/` or `.agents/skills/` directory if either exists:
+**Step 2 — Load and apply skills FIRST (approach-selection phase):**
+
+Check `.claude/skills/` or `.agents/skills/` directory if either exists:
 1. List available skills (subdirectories)
 2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
-3. Load specific `rules/*.md` files as needed during planning
+3. Load specific `rules/*.md` files as needed
 4. Do NOT load full `AGENTS.md` files (100KB+ context cost)
-5. Ensure plans account for project skill patterns and conventions
 
-This ensures task actions reference the correct patterns and libraries for this project.
+**Critical:** Skills inform WHAT approach you choose, not just HOW you implement it. Before designing any task, ask:
+- Does a skill define the correct library, pattern, or convention for this domain?
+- Would ignoring this skill produce a plan that conflicts with project standards?
+- Does the skill define a pattern the executor will need to follow?
+
+If a skill is directly applicable, the plan's `<action>` fields MUST reference its conventions. Don't just read the skill — let it shape the plan.
+
+**Step 3 — Apply global Claude Code skills (if running in Claude Code):**
+
+Check `~/.claude/skills/` for globally deployed skills. These apply project-wide and supercede generic approaches. Load any whose domain overlaps with the current phase.
 </project_context>
 
 <context_fidelity>
@@ -120,6 +130,159 @@ Plan -> Execute -> Ship -> Learn -> Repeat
 - Documentation for documentation's sake
 
 </philosophy>
+
+<architecture_patterns>
+
+## Pattern Recognition — Apply Before Task Decomposition
+
+Identify whether an established pattern applies before breaking work into tasks. Poor plans reinvent what decades of engineering history already solved. Apply patterns deliberately — because the problem fits, not because the pattern is familiar.
+
+### The Pattern Heuristic (run this before every phase plan)
+
+1. What is the essential complexity of this problem? (domain logic, data access, concurrency, UI composition?)
+2. Have engineers solved this class of problem before? What pattern emerged?
+3. Does applying the pattern reduce complexity or add it for this scope?
+4. **YAGNI test:** "Will this pattern be actively used before this milestone ships?" If no → don't add it.
+
+**Hard rule:** Patterns that add indirection without immediate payoff are accidental complexity. YAGNI and KISS beat pattern purity every time for a solo-developer product.
+
+---
+
+### Pattern Catalog
+
+#### Ports & Adapters (Hexagonal Architecture)
+
+**Symptom requiring it:** Business logic leaks into HTTP handlers or DB calls. Tests require real infrastructure. Adding a new data store would require touching domain code.
+
+**Apply when:** Domain logic is non-trivial and must be tested in isolation; multiple adapters exist or are planned; codebase will outlive its initial infrastructure choices.
+
+**Rust task pattern:**
+```rust
+// Port lives in domain crate
+pub trait UserRepository: Send + Sync {
+    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, DomainError>;
+}
+// Adapter lives in infra crate
+pub struct PgUserRepository { pool: PgPool }
+impl UserRepository for PgUserRepository { ... }
+```
+
+**TypeScript task pattern:**
+```typescript
+interface UserRepository { findById(id: string): Promise<User | null>; }
+class PrismaUserRepository implements UserRepository { ... }
+```
+
+**Skip when:** Thin CRUD with no domain logic, or applying it requires significant refactoring with no near-term payoff.
+
+---
+
+#### Repository Pattern
+
+**Apply when:** Data access patterns are reused across multiple services/handlers, or the underlying store might change. **Skip when:** Single-table CRUD accessed from one place.
+
+---
+
+#### CQRS (Command Query Responsibility Segregation)
+
+**Apply when:** Read and write models have diverging shapes causing real performance or complexity problems; event sourcing is in use. **Skip when:** Standard CRUD. CQRS is a complexity multiplier — it earns its cost only when the divergence is current, not speculative.
+
+---
+
+#### Type-State Pattern (Rust-specific)
+
+**Symptom requiring it:** Invalid state transitions only caught at runtime. Functions accept arguments meaningless in certain states.
+
+**Apply when:** Object has a lifecycle where operations are only valid in specific states (connection lifecycle, payment state machine, auth flow).
+
+```rust
+use std::marker::PhantomData;
+struct Connection<S: ConnectionState> { inner: TcpStream, _state: PhantomData<S> }
+impl Connection<Disconnected> {
+    pub fn connect(self, addr: &str) -> Result<Connection<Connected>, Error> { ... }
+}
+impl Connection<Connected> {
+    pub fn send(&self, data: &[u8]) -> Result<(), Error> { ... }
+}
+// compile-time guarantee: cannot call send() on a Disconnected connection
+```
+
+**Skip when:** Simple two-state toggle, or phantom type machinery costs more than the safety gain.
+
+---
+
+#### New-Type Pattern (Rust-specific)
+
+**Apply always** for domain identifiers and validated values. Prevents mixing `UserId` with `PostId` at compile time.
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UserId(Uuid);
+impl UserId { pub fn new() -> Self { Self(Uuid::new_v4()) } }
+```
+
+---
+
+#### Actor Model (Rust + Tokio / ractor)
+
+**Apply when:** Isolated mutable state with message-passing, concurrent state machines, or independent long-lived agents. **Skip when:** Simple async I/O, or `Arc<RwLock<T>>` is simpler.
+
+---
+
+#### Component Composition (React/TypeScript)
+
+**Core rule:** Composition over configuration. A component with >6 props is usually a smell for decomposition.
+
+```typescript
+// Prefer: composed primitives
+<Card><CardHeader><Title>{title}</Title></CardHeader><CardBody>{children}</CardBody></Card>
+
+// Avoid: monolithic prop-driven component
+<SuperCard title={} subtitle={} body={} variant={} size={} actions={} ... />
+```
+
+**Server vs Client Components (Next.js):** Default to Server Components. Add `"use client"` ONLY for event handlers, browser APIs, `useState`/`useReducer`, real-time subscriptions.
+
+---
+
+#### Event-Driven / Message Bus
+
+**Apply when:** Services must be decoupled from each other's lifecycles, fan-out required, or audit trail/replay needed. **Skip when:** Request-response is sufficient or latency requirements are synchronous.
+
+---
+
+### Architectural Smell Detector
+
+Scan the phase description for these before planning tasks:
+
+| Smell | Signal in description | Resolution to plan |
+|-------|----------------------|-------------------|
+| God service | "the X service handles Y, Z, and W" | Split by bounded context |
+| Primitive obsession | Raw `string`/`u64` passed as IDs | Add new-type wrappers as Wave 0 task |
+| Anemic domain | "add business logic to the X controller" | Move logic to domain objects |
+| Leaky abstraction | "the route handler queries the DB directly" | Introduce repository |
+| Shotgun surgery | "updating X requires changing 6 files" | Identify coupling, consolidate |
+| Premature optimization | "add caching before benchmarking" | Remove — benchmark first |
+
+---
+
+### Rust-Specific Engineering Principles
+
+These inform task action specificity — not general advice:
+
+- **Error handling:** `thiserror` for library/domain errors; `anyhow` for application binary errors. Never `unwrap()` in production paths outside tests. Use `?` propagation. Error types belong at domain boundaries.
+- **Async discipline:** `tokio::spawn` for independent concurrent work; `.await` for sequential async steps. Never block inside async tasks (use `spawn_blocking` for CPU-bound or blocking I/O).
+- **Arc/Mutex discipline:** When you see `Arc<Mutex<T>>`, ask whether the access pattern can restructure to avoid shared mutable state. Prefer message-passing (`mpsc`) over broad locking.
+- **Zero-cost abstractions:** Static dispatch (`impl Trait`) is default. `dyn Trait` only when runtime polymorphism is explicitly required.
+
+### TypeScript/React Engineering Principles
+
+- **Type safety:** No `any`. Prefer `unknown` + narrowing. Zod for runtime validation at API boundaries.
+- **State colocation:** Keep state as close to consumers as possible. Don't hoist to global store unless multiple unrelated components need it.
+- **Data fetching:** In Next.js, prefer RSC + `fetch` with cache control over client-side fetching. Use TanStack Query only for truly client-driven dynamic queries.
+- **Error boundaries:** Every async route/page needs an `error.tsx`. Every form needs error state handling.
+
+</architecture_patterns>
 
 <discovery_levels>
 
